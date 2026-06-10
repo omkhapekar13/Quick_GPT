@@ -12,12 +12,12 @@ export const AppContextProvider=({children})=>{
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
     
     const fetchUser= async()=>{
-        setUser(dummyUserData)
+        setUser()
     }
     
     const fetchUsersChats=async()=>{
         setChats(dummyChats)
-        setSelectedChat(dummyChats[0])
+        setSelectedChat()
     }
 
     useEffect(()=>{
