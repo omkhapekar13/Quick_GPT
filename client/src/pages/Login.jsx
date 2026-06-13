@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
+import { useAppContext } from '../context/AppContext'
 
 const Login = () => {
   const [state, setState] = useState("login")
+  const { fetchUser, backendUrl, navigate } = useAppContext()
 
   const [formData, setFormData] = useState({
     name: '',
@@ -14,8 +16,32 @@ const Login = () => {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    try {
+      const url = state === "login" 
+        ? `${backendUrl}/api/user/login` 
+        : `${backendUrl}/api/user/register`
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      })
+      const data = await response.json()
+      if (data.success) {
+        localStorage.setItem('token', data.token)
+        await fetchUser()
+        navigate('/')
+      } else {
+        alert(data.message)
+      }
+    } catch (error) {
+      console.error("Auth error:", error)
+      alert(error.message)
+    }
   }
 
   return (

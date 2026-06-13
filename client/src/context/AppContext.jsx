@@ -11,8 +11,31 @@ export const AppContextProvider=({children})=>{
     const [selectedChat, setSelectedChat] = useState(null);
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
     
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000"
+
     const fetchUser= async()=>{
-        setUser()
+        const token = localStorage.getItem('token')
+        if(!token) {
+            setUser(null)
+            return
+        }
+        try {
+            const response = await fetch(`${backendUrl}/api/user/data`, {
+                headers: {
+                    Authorization: token
+                }
+            })
+            const data = await response.json()
+            if(data.success) {
+                setUser(data.user)
+            } else {
+                localStorage.removeItem('token')
+                setUser(null)
+            }
+        } catch (error) {
+            console.error("Error fetching user:", error)
+            setUser(null)
+        }
     }
     
     const fetchUsersChats=async()=>{
@@ -46,7 +69,7 @@ export const AppContextProvider=({children})=>{
         fetchUser()
     },[])
     const value = {
-        navigate,user,setUser,fetchUser,chats,setChats,selectedChat,setSelectedChat,theme,setTheme
+        navigate,user,setUser,fetchUser,chats,setChats,selectedChat,setSelectedChat,theme,setTheme,backendUrl
     }
     return(
         <AppContext.Provider value={value}>
