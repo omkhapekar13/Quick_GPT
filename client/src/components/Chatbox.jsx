@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
 import { assets } from '../assets/assets'
 import Message from './Message'
+import toast from 'react-hot-toast'
 
 const Chatbox = () => {
 
-  const { selectedChat, theme } = useAppContext()
+  const { selectedChat, theme, user, axios, token, setUser} = useAppContext()
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -13,7 +14,35 @@ const Chatbox = () => {
   const [isPublished, setIsPublished] = useState(false)
 
   const onSubmit = async(e)=>{
-    e.preventDefault()
+    try {
+      e.preventDefault()
+      if(!user) return toast('Login to send message')
+      setLoading(true)
+      const promptCopy = prompt
+      setPrompt('')
+      setMessages(prev=> [...prev, {role: 'user', content: prompt, timestamp: Date.now(), isImage: false}])
+
+      const { data } = await axios.post(`/api/message/${mode}`, {chatId: selectedChat._id, prompt, isPublished},{headers: {Authorization: token}})
+
+      if(data.success){
+        setMessages(prev=> [...prev, data.reply])
+        //decrease credits 
+        if(mode === 'image'){
+          setUser(prev=> ({...prev, credits: prev.credits - 2}))
+        }else{
+          setUser(prev=> ({...prev, credits: prev.credits - 1}))
+        }
+      }else{
+        toast.error(data.message)
+        setPrompt(promptCopy)
+      }
+      
+    } catch (error) {
+      toast.error(error.message)
+    } finally{
+      setPrompt('')
+      setLoading(false)
+    }
   }
   const containerRef = useRef(null)
 
@@ -31,7 +60,7 @@ const Chatbox = () => {
         behavior: "smooth",
       })
     }
-  },[messages])
+  },[messages, loading])
   return (
     <div className='flex-1 flex flex-col justify-between min-h-0 overflow-hidden m-5 md:m-10 xl:mx-30 max-md:mt-14 2xl:pr-40'>
 
@@ -45,15 +74,18 @@ const Chatbox = () => {
         )}
 
         {messages.map((message,index)=><Message key={index} message={message}/>)}
-      </div>
-      {/* Three dots loading */}
+
+        {/* Three dots loading bubble */}
         {
-          loading && <div className='loader flex items-center gap-1.5'>
-            <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce'></div>
-            <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce'></div>
-            <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce'></div>
-          </div>
+          loading && (
+            <div className='inline-flex items-center gap-1.5 p-3 px-5 bg-primary/20 dark:bg-[#57317C]/30 border border-[#80609F]/30 rounded-md my-4'>
+              <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce' style={{ animationDelay: '0ms' }}></div>
+              <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce' style={{ animationDelay: '150ms' }}></div>
+              <div className='w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white animate-bounce' style={{ animationDelay: '300ms' }}></div>
+            </div>
+          )
         }
+      </div>
 
         {mode==='image' &&(
           <label className='inline-flex items-center gap-2 mb-3 text-sm mx-auto'>

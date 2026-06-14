@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import Sidebar from './components/Sidebar'
-import { Routes, Route, Outlet } from 'react-router-dom'
+import { Routes, Route, Outlet, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Credits from './pages/Credits'
 import Login from './pages/Login'
@@ -10,12 +10,14 @@ import Community from './pages/Community'
 import './assets/prism.css'
 import Loading from './pages/Loading'
 import { useAppContext } from './context/AppContext'
+import {Toaster} from 'react-hot-toast'
 
 // A layout wrapper that renders the Sidebar and top menu button
 const AppLayout = ({ isMenuOpen, setIsMenuOpen }) => {
-  const {user} = useAppContext()
+  const {user, loadingUser} = useAppContext()
   return (
     <>
+      <Toaster/>
       {!isMenuOpen && (
         <img 
           src={assets.menu_icon} 
@@ -41,7 +43,10 @@ const AppLayout = ({ isMenuOpen, setIsMenuOpen }) => {
 
 const App = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { pathname } = useLocation()
+  const { loadingUser } = useAppContext()
 
+  if(pathname === '/loading' || loadingUser) return <Loading/>
   return (
     <Routes>
       {/* Pages without Sidebar (Full Screen) */}

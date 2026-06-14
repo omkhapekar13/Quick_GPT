@@ -1,15 +1,19 @@
 import React, { useState } from 'react'
 import { useAppContext } from '../context/AppContext'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const Login = () => {
   const [state, setState] = useState("login")
-  const { fetchUser, backendUrl, navigate } = useAppContext()
+  const { setToken, navigate } = useAppContext()
 
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: ''
   })
+
+  const { axios } = useAppContext()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -20,27 +24,19 @@ const Login = () => {
     e.preventDefault()
     try {
       const url = state === "login" 
-        ? `${backendUrl}/api/user/login` 
-        : `${backendUrl}/api/user/register`
+        ? `/api/user/login` 
+        : `/api/user/register`
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      })
-      const data = await response.json()
+      const { data } = await axios.post(url, formData)
       if (data.success) {
         localStorage.setItem('token', data.token)
-        await fetchUser()
+        setToken(data.token)
         navigate('/')
       } else {
-        alert(data.message)
+        toast.error(data.message)
       }
     } catch (error) {
-      console.error("Auth error:", error)
-      alert(error.message)
+      toast.error(error.message)
     }
   }
 
