@@ -12,6 +12,8 @@ const initialState = {
   participants: [],
   typingUsers: [],
   isAITyping: false,
+  summaries: [],
+  isGeneratingSummary: false,
 };
 
 function roomReducer(state, action) {
@@ -73,6 +75,12 @@ function roomReducer(state, action) {
         activeRoom: state.activeRoom?._id === updatedRoom._id ? updatedRoom : state.activeRoom,
       };
     }
+    case "SET_SUMMARIES":
+      return { ...state, summaries: action.payload };
+    case "ADD_SUMMARY":
+      return { ...state, summaries: [action.payload, ...state.summaries] };
+    case "SET_GENERATING_SUMMARY":
+      return { ...state, isGeneratingSummary: action.payload };
     case "CLEAR_ROOM_STATE":
       return {
         ...state,
@@ -81,6 +89,8 @@ function roomReducer(state, action) {
         participants: [],
         typingUsers: [],
         isAITyping: false,
+        summaries: [],
+        isGeneratingSummary: false,
       };
     default:
       return state;
@@ -285,6 +295,46 @@ export const RoomContextProvider = ({ children }) => {
     }
   };
 
+  const fetchSummaries = async (roomId) => {
+    if (!token) return;
+    try {
+      const { data } = await axios.get(`/api/room/${roomId}/summaries`, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        dispatch({ type: "SET_SUMMARIES", payload: data.summaries });
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const generateSummary = async (roomId) => {
+    if (!token) return null;
+    dispatch({ type: "SET_GENERATING_SUMMARY", payload: true });
+    try {
+      const { data } = await axios.post(`/api/room/${roomId}/summary`, {}, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success("Summary generated successfully!");
+        dispatch({ type: "ADD_SUMMARY", payload: data.summary });
+        setUser((prev) => (prev ? { ...prev, credits: data.credits } : prev));
+        return data.summary;
+      } else {
+        toast.error(data.message);
+        return null;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return null;
+    } finally {
+      dispatch({ type: "SET_GENERATING_SUMMARY", payload: false });
+    }
+  };
+
   return (
     <RoomContext.Provider
       value={{
@@ -296,6 +346,8 @@ export const RoomContextProvider = ({ children }) => {
         joinRoomViaLink,
         createRoom,
         patchRoomSettings,
+        fetchSummaries,
+        generateSummary,
         socket: socketRef.current,
       }}
     >

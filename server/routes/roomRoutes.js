@@ -9,6 +9,10 @@ import {
   getRoomMessages,
   updateRoomSettings,
 } from "../controllers/roomController.js";
+import {
+  generateRoomSummary,
+  getRoomSummaries,
+} from "../controllers/summaryController.js";
 
 const roomRouter = express.Router();
 
@@ -18,5 +22,7 @@ roomRouter.get("/list", protect, getRooms);
 roomRouter.get("/:roomId", protect, roomMember, getRoomDetails);
 roomRouter.get("/:roomId/messages", protect, roomMember, getRoomMessages);
 roomRouter.patch("/:roomId", protect, roomMember, updateRoomSettings);
+roomRouter.post("/:roomId/summary", protect, roomMember, generateRoomSummary);
+roomRouter.get("/:roomId/summaries", protect, roomMember, getRoomSummaries);
 
 export default roomRouter;

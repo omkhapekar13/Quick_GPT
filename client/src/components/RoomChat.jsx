@@ -9,6 +9,7 @@ import TypingIndicator from "./TypingIndicator";
 import InviteModal from "./InviteModal";
 import AITriggerButton from "./AITriggerButton";
 import RoomSettings from "./RoomSettings";
+import SummaryPanel from "./SummaryPanel";
 
 const RoomChat = () => {
   const { user, theme } = useAppContext();
@@ -18,6 +19,7 @@ const RoomChat = () => {
   const [isTypingState, setIsTypingState] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   
   const containerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -118,6 +120,13 @@ const RoomChat = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-[#2A2633] border border-gray-300 dark:border-[#80609F]/20 hover:opacity-90 rounded-md transition-opacity cursor-pointer animate-fade-in"
+            title="Conversation Summaries"
+          >
+            Summaries
+          </button>
           <button
             onClick={() => setIsInviteOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#A456F7] hover:opacity-90 rounded-md transition-opacity cursor-pointer animate-fade-in"
@@ -254,6 +263,12 @@ const RoomChat = () => {
       <RoomSettings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Summary Drawer Panel */}
+      <SummaryPanel
+        isOpen={isSummaryOpen}
+        onClose={() => setIsSummaryOpen(false)}
       />
     </div>
   );

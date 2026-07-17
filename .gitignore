@@ -12,3 +12,4 @@ yarn-error.log*
 dist/
 build/
 COLLAB_CHAT_PLAN.md
+implementation_plans/
