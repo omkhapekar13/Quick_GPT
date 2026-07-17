@@ -117,7 +117,7 @@ export const verifyPayment = async (req, res)=>{
             razorpay_signature, 
             razorpay_payment_link_id, 
             razorpay_payment_link_reference_id, 
-            razorpay_payment_link_status, 
+            razorpay_payment_link_status,
             fake 
         } = data
 

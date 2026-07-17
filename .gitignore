@@ -11,3 +11,4 @@ yarn-error.log*
 .DS_Store
 dist/
 build/
+COLLAB_CHAT_PLAN.md

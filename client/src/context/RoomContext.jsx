@@ -57,6 +57,22 @@ function roomReducer(state, action) {
     }
     case "SET_AI_TYPING":
       return { ...state, isAITyping: action.payload };
+    case "SET_AI_TYPING_EVENT":
+      if (state.activeRoom?._id === action.payload.roomId) {
+        return { ...state, isAITyping: action.payload.isTyping };
+      }
+      return state;
+    case "UPDATE_ROOM": {
+      const updatedRoom = action.payload;
+      const updatedRoomList = state.roomList.map((r) =>
+        r._id === updatedRoom._id ? updatedRoom : r
+      );
+      return {
+        ...state,
+        roomList: updatedRoomList,
+        activeRoom: state.activeRoom?._id === updatedRoom._id ? updatedRoom : state.activeRoom,
+      };
+    }
     case "CLEAR_ROOM_STATE":
       return {
         ...state,
@@ -72,7 +88,7 @@ function roomReducer(state, action) {
 }
 
 export const RoomContextProvider = ({ children }) => {
-  const { token, axios } = useAppContext();
+  const { token, axios, setUser } = useAppContext();
   const [state, dispatch] = useReducer(roomReducer, initialState);
   const socketRef = useRef(null);
 
@@ -112,6 +128,14 @@ export const RoomContextProvider = ({ children }) => {
 
     socket.on("presence-update", (data) => {
       dispatch({ type: "UPDATE_PRESENCE", payload: data });
+    });
+
+    socket.on("credits-update", (data) => {
+      setUser((prev) => (prev ? { ...prev, credits: data.credits } : prev));
+    });
+
+    socket.on("ai-typing", (data) => {
+      dispatch({ type: "SET_AI_TYPING_EVENT", payload: data });
     });
 
     socket.on("error", (data) => {
@@ -241,6 +265,26 @@ export const RoomContextProvider = ({ children }) => {
     }
   };
 
+  const patchRoomSettings = async (roomId, settings) => {
+    if (!token) return null;
+    try {
+      const { data } = await axios.patch(`/api/room/${roomId}`, settings, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success("Room settings updated successfully!");
+        dispatch({ type: "UPDATE_ROOM", payload: data.room });
+        return data.room;
+      } else {
+        toast.error(data.message);
+        return null;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return null;
+    }
+  };
+
   return (
     <RoomContext.Provider
       value={{
@@ -251,6 +295,7 @@ export const RoomContextProvider = ({ children }) => {
         sendRoomTyping,
         joinRoomViaLink,
         createRoom,
+        patchRoomSettings,
         socket: socketRef.current,
       }}
     >
