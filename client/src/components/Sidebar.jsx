@@ -1,15 +1,24 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAppContext } from '../context/AppContext'
 import { assets } from '../assets/assets'
 import moment from 'moment'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import RoomSidebar from './RoomSidebar'
 
 const Sidebar = ({isMenuOpen,setIsMenuOpen}) => {
 
   const {chats,setSelectedChat, theme, setTheme, user, createNewChat, axios, setChats, fetchUsersChats, token, setToken} = useAppContext()
   const navigate = useNavigate()
+  const location = useLocation()
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState('chats')
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/room')) {
+      setActiveTab('rooms')
+    }
+  }, [location])
 
   const logout = ()=>{
     localStorage.removeItem('token')
@@ -38,36 +47,60 @@ const Sidebar = ({isMenuOpen,setIsMenuOpen}) => {
       {/* Logo */}
       <img src={theme==='dark'? assets.logo_full : assets.logo_full_dark} alt="" className='w-full max-w-48' />
 
-      {/* Chat Button */}
-      <button onClick={createNewChat} className='flex justify-center items-center w-full py-2 mt-10 text-white bg-gradient-to-r from-[#A456F7] to-[#3D81F6] text-sm rounded-md cursor-pointer'>
-        <span className='mr-2 text-xl'>+</span>New Chat
-      </button>
-
-      {/* Search Conversations */}
-      <div className='flex items-center gap-2 p-3 mt-4 border border-gray-400 dark:border-white/20 rounded-md'>
-        <img src={assets.search_icon} className='w-4 not-dark:invert' alt="" />
-        <input onChange={(e) => setSearch(e.target.value)} value={search} type="text" placeholder='Search Conversations' className='text-xs placeholder:text-gray-400 outline-none'/>
+      {/* Tab Switcher */}
+      <div className="flex gap-2 mt-6 border-b border-gray-400 dark:border-white/20 pb-2">
+        <button 
+          onClick={() => { setActiveTab('chats'); navigate('/') }} 
+          className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${activeTab === 'chats' ? 'bg-[#A456F7] text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2A2633]'}`}
+        >
+          Chats
+        </button>
+        <button 
+          onClick={() => { setActiveTab('rooms'); navigate('/rooms') }} 
+          className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${activeTab === 'rooms' ? 'bg-[#A456F7] text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#2A2633]'}`}
+        >
+          Collab Rooms
+        </button>
       </div>
 
-      {/* Recent Chats */}
-      {chats.length>0 && <p className='mt-4 text-sm'>Recent Chats</p>}
-      <div className='flex-1 overflow-y-scroll mt-3 text-sm space-y-3'>
-        {
-          chats.filter((chat)=> chat.messages[0] ? chat.messages[0]?.content.toLowerCase().includes(search.toLowerCase()) : chat.name.toLowerCase().includes(search.toLowerCase())).map((chat)=>(
-            <div onClick={()=>{navigate('/');setSelectedChat(chat);setIsMenuOpen(false)}} key={chat._id} className='p-2 px-4 dark:bg-[#57317C]/10 border border-gray-300 dark:border-[#80609F]/15 rounded-md cursor-pointer flex justify-between group'>
-              <div>
-                <p className='truncate w-full'>
-                    {chat.messages.length>0 ? chat.messages[0].content.slice(0,32) : chat.name}
-                </p>
-                <p className='text-xs text-gray-500 dark:text-[#B1A6C0]'>
-                    {moment(chat.updatedAt).fromNow()}
-                </p>
-              </div>
-                <img src={assets.bin_icon} className='hidden group-hover:block w-4 cursor-pointer dark:invert' alt="" onClick={e=> toast.promise(deleteChat(e, chat._id), {loading: 'deleting...'})} />
-            </div>
-          ))
-        }
-      </div>
+      {activeTab === 'chats' ? (
+        <>
+          {/* Chat Button */}
+          <button onClick={createNewChat} className='flex justify-center items-center w-full py-2 mt-4 text-white bg-gradient-to-r from-[#A456F7] to-[#3D81F6] text-sm rounded-md cursor-pointer'>
+            <span className='mr-2 text-xl'>+</span>New Chat
+          </button>
+
+          {/* Search Conversations */}
+          <div className='flex items-center gap-2 p-3 mt-4 border border-gray-400 dark:border-white/20 rounded-md'>
+            <img src={assets.search_icon} className='w-4 not-dark:invert' alt="" />
+            <input onChange={(e) => setSearch(e.target.value)} value={search} type="text" placeholder='Search Conversations' className='text-xs placeholder:text-gray-400 outline-none w-full dark:text-white'/>
+          </div>
+
+          {/* Recent Chats */}
+          {chats.length>0 && <p className='mt-4 text-sm'>Recent Chats</p>}
+          <div className='flex-1 overflow-y-scroll mt-3 text-sm space-y-3'>
+            {
+              chats.filter((chat)=> chat.messages[0] ? chat.messages[0]?.content.toLowerCase().includes(search.toLowerCase()) : chat.name.toLowerCase().includes(search.toLowerCase())).map((chat)=>(
+                <div onClick={()=>{navigate('/');setSelectedChat(chat);setIsMenuOpen(false)}} key={chat._id} className='p-2 px-4 dark:bg-[#57317C]/10 border border-gray-300 dark:border-[#80609F]/15 rounded-md cursor-pointer flex justify-between group'>
+                  <div>
+                    <p className='truncate w-full'>
+                        {chat.messages.length>0 ? chat.messages[0].content.slice(0,32) : chat.name}
+                    </p>
+                    <p className='text-xs text-gray-500 dark:text-[#B1A6C0]'>
+                        {moment(chat.updatedAt).fromNow()}
+                    </p>
+                  </div>
+                    <img src={assets.bin_icon} className='hidden group-hover:block w-4 cursor-pointer dark:invert' alt="" onClick={e=> toast.promise(deleteChat(e, chat._id), {loading: 'deleting...'})} />
+                </div>
+              ))
+            }
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 min-h-0">
+          <RoomSidebar />
+        </div>
+      )}
         {/* Community Images */}
       <div onClick={()=>{navigate('/community');setIsMenuOpen(false)}} className='flex items-center gap-2 p-3 mt-4 border border-gray-300 dark:border-white/15 rounded-md cursor-pointer hover:scale-103 transition-all'>
         <img src={assets.gallery_icon} className='w-4.5 not-dark:invert' alt="" />

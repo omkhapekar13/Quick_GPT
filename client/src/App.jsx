@@ -11,6 +11,9 @@ import './assets/prism.css'
 import Loading from './pages/Loading'
 import { useAppContext } from './context/AppContext'
 import {Toaster} from 'react-hot-toast'
+import RoomList from './pages/RoomList'
+import RoomPage from './pages/RoomPage'
+import JoinRoom from './pages/JoinRoom'
 
 // A layout wrapper that renders the Sidebar and top menu button
 const AppLayout = ({ isMenuOpen, setIsMenuOpen }) => {
@@ -58,6 +61,9 @@ const App = () => {
         <Route path='/community' element={<Community />} />
         <Route path='/' element={<Home />} />
         <Route path='/credits' element={<Credits />} />
+        <Route path='/rooms' element={<RoomList />} />
+        <Route path='/room/:roomId' element={<RoomPage />} />
+        <Route path='/room/join/:inviteCode' element={<JoinRoom />} />
         <Route path='*' element={<Notfound />} />
       </Route>
     </Routes>
