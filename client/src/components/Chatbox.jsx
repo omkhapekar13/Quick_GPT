@@ -17,21 +17,22 @@ const Chatbox = () => {
     e.preventDefault()
     if(!user) return toast('Login to send message')
     const promptCopy = prompt
+    if (!promptCopy.trim()) return
     try {
       setLoading(true)
       setPrompt('')
-      setMessages(prev=> [...prev, {role: 'user', content: prompt, timestamp: Date.now(), isImage: false}])
+      setMessages(prev=> [...prev, {role: 'user', content: promptCopy, timestamp: Date.now(), isImage: false}])
 
-      const { data } = await axios.post(`/api/message/${mode}`, {chatId: selectedChat._id, prompt, isPublished},{headers: {Authorization: token}})
+      const { data } = await axios.post(`/api/message/${mode}`, {chatId: selectedChat._id, prompt: promptCopy, isPublished},{headers: {Authorization: token}})
 
       if(data.success){
         setMessages(prev=> [...prev, data.reply])
         //decrease credits 
-        if(mode === 'image'){
-          setUser(prev=> ({...prev, credits: prev.credits - 2}))
-        }else{
-          setUser(prev=> ({...prev, credits: prev.credits - 1}))
-        }
+        setUser(prev=> {
+          if (!prev) return prev
+          const cost = mode === 'image' ? 2 : 1
+          return { ...prev, credits: Math.max(0, prev.credits - cost) }
+        })
       }else{
         toast.error(data.message)
         setPrompt(promptCopy)

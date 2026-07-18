@@ -2,12 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useRoomContext } from "../context/RoomContext";
 import { useNavigate } from "react-router-dom";
 import CreateRoomModal from "../components/CreateRoomModal";
+import JoinRoomModal from "../components/JoinRoomModal";
 import moment from "moment";
 
 const RoomList = () => {
-  const { roomList, fetchRooms } = useRoomContext();
+  const { roomList, fetchRooms, unreadCounts } = useRoomContext();
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
 
   useEffect(() => {
     fetchRooms();
@@ -22,12 +24,20 @@ const RoomList = () => {
             Brainstorm and work together in real-time.
           </p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#A456F7] to-[#3D81F6] hover:opacity-90 rounded-md transition-opacity cursor-pointer"
-        >
-          Create Room
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsJoinOpen(true)}
+            className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-[#2A2633] border border-gray-300 dark:border-[#80609F]/20 hover:bg-gray-200 dark:hover:bg-[#353040] rounded-md transition-colors cursor-pointer"
+          >
+            Join Room
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#A456F7] to-[#3D81F6] hover:opacity-90 rounded-md transition-opacity cursor-pointer"
+          >
+            Create Room
+          </button>
+        </div>
       </div>
 
       {roomList.length > 0 ? (
@@ -35,15 +45,21 @@ const RoomList = () => {
           {roomList.map((room) => {
             const onlineCount = room.participants.filter((p) => p.isOnline).length;
             const isOwner = room.participants.find((p) => p.role === "owner");
+            const unreadCount = unreadCounts?.[room._id] || 0;
 
             return (
               <div
                 key={room._id}
                 onClick={() => navigate(`/room/${room._id}`)}
-                className="p-5 bg-white dark:bg-[#1E1B24]/40 border border-gray-200 dark:border-[#80609F]/15 rounded-xl shadow-sm hover:shadow-md hover:border-purple-400 transition-all cursor-pointer flex flex-col justify-between"
+                className="p-5 bg-white dark:bg-[#1E1B24]/40 border border-gray-200 dark:border-[#80609F]/15 rounded-xl shadow-sm hover:shadow-md hover:border-purple-400 transition-all cursor-pointer flex flex-col justify-between relative"
               >
+                {unreadCount > 0 && (
+                  <span className="absolute top-3 right-3 inline-flex items-center justify-center h-5 min-w-5 px-1.5 text-xs font-bold leading-none text-white bg-purple-600 rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
                 <div>
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white truncate">
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white truncate pr-6">
                     {room.name}
                   </h3>
                   <p className="text-xs text-gray-400 mt-1">
@@ -78,6 +94,7 @@ const RoomList = () => {
       )}
 
       <CreateRoomModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <JoinRoomModal isOpen={isJoinOpen} onClose={() => setIsJoinOpen(false)} />
     </div>
   );
 };

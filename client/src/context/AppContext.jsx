@@ -34,7 +34,7 @@ export const AppContextProvider = ({ children }) => {
 
     const createNewChat = async ()=>{
         try {
-            if(!user) return toast('Login to create a new chat')
+            if(!token) return toast('Login to create a new chat')
             navigate('/')
         await axios.get('/api/chat/create', {headers: {Authorization: token}})
         await fetchUsersChats()
@@ -77,13 +77,13 @@ export const AppContextProvider = ({ children }) => {
     }, [theme])
 
     useEffect(() => {
-        if (user) {
+        if (token) {
             fetchUsersChats()
         } else {
             setChats([])
             setSelectedChat(null)
         }
-    }, [user])
+    }, [token])
 
     useEffect(() => {
         if(token)

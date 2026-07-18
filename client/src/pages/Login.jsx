@@ -50,6 +50,7 @@ const Login = () => {
 
       <form
         onSubmit={handleSubmit}
+        autoComplete="off"
         className="w-full sm:w-[350px] text-center bg-white/70 dark:bg-white/5 border border-purple-200/50 dark:border-white/10 rounded-2xl px-8 py-4 shadow-xl shadow-purple-900/5 dark:shadow-none backdrop-blur-md z-10"
       >
         <h1 className="text-purple-700 dark:text-white text-3xl mt-6 font-medium">
@@ -70,6 +71,7 @@ const Login = () => {
               type="text" 
               name="name" 
               placeholder="Name" 
+              autoComplete="new-name"
               className="w-full bg-transparent text-purple-950 dark:text-white placeholder-purple-400/80 dark:placeholder-white/60 border-none outline-none" 
               value={formData.name} 
               onChange={handleChange} 
@@ -87,6 +89,7 @@ const Login = () => {
             type="email" 
             name="email" 
             placeholder="Email id" 
+            autoComplete="new-email"
             className="w-full bg-transparent text-purple-950 dark:text-white placeholder-purple-400/80 dark:placeholder-white/60 border-none outline-none" 
             value={formData.email} 
             onChange={handleChange} 
@@ -103,6 +106,7 @@ const Login = () => {
             type="password" 
             name="password" 
             placeholder="Password" 
+            autoComplete="new-password"
             className="w-full bg-transparent text-purple-950 dark:text-white placeholder-purple-400/80 dark:placeholder-white/60 border-none outline-none" 
             value={formData.password} 
             onChange={handleChange} 
@@ -124,7 +128,10 @@ const Login = () => {
         </button>
 
         <p 
-          onClick={() => setState(prev => prev === "login" ? "register" : "login")} 
+          onClick={() => {
+            setState(prev => prev === "login" ? "register" : "login");
+            setFormData({ name: '', email: '', password: '' });
+          }} 
           className="text-gray-500 dark:text-gray-400 text-sm mt-4 mb-6 cursor-pointer"
         >
           {state === "login" ? "Don't have an account?" : "Already have an account?"}

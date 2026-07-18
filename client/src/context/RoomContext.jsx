@@ -3,6 +3,29 @@ import { io } from "socket.io-client";
 import { useAppContext } from "./AppContext";
 import toast from "react-hot-toast";
 
+const playNotificationSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+    oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+
+    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 0.2);
+  } catch (error) {
+    console.error("Failed to play notification sound:", error);
+  }
+};
+
 const RoomContext = createContext();
 
 const initialState = {
@@ -14,21 +37,49 @@ const initialState = {
   isAITyping: false,
   summaries: [],
   isGeneratingSummary: false,
+  unreadCounts: {},
 };
 
 function roomReducer(state, action) {
   switch (action.type) {
     case "SET_ROOMS":
       return { ...state, roomList: action.payload };
-    case "SET_ACTIVE_ROOM":
-      return { ...state, activeRoom: action.payload };
+    case "SET_ACTIVE_ROOM": {
+      const roomId = action.payload?._id;
+      const updatedUnread = { ...(state.unreadCounts || {}) };
+      if (roomId) {
+        delete updatedUnread[roomId];
+      }
+      return { ...state, activeRoom: action.payload, unreadCounts: updatedUnread };
+    }
     case "SET_MESSAGES":
       return { ...state, messages: action.payload };
-    case "ADD_MESSAGE":
-      if (state.messages.some((m) => m._id === action.payload._id)) {
-        return state;
+    case "ADD_MESSAGE": {
+      const msg = action.payload;
+      const isForActiveRoom = state.activeRoom?._id === msg.roomId;
+      
+      let updatedMessages = state.messages;
+      if (isForActiveRoom) {
+        if (!state.messages.some((m) => m._id === msg._id)) {
+          updatedMessages = [...state.messages, msg];
+        }
       }
-      return { ...state, messages: [...state.messages, action.payload] };
+
+      let updatedUnread = state.unreadCounts || {};
+      if (!isForActiveRoom && msg.senderType !== "system") {
+        const currentCount = updatedUnread[msg.roomId] || 0;
+        updatedUnread = {
+          ...updatedUnread,
+          [msg.roomId]: currentCount + 1,
+        };
+      }
+
+      return {
+        ...state,
+        messages: updatedMessages,
+        unreadCounts: updatedUnread,
+      };
+    }
     case "SET_PARTICIPANTS":
       return { ...state, participants: action.payload };
     case "UPDATE_PRESENCE": {
@@ -81,6 +132,25 @@ function roomReducer(state, action) {
       return { ...state, summaries: [action.payload, ...state.summaries] };
     case "SET_GENERATING_SUMMARY":
       return { ...state, isGeneratingSummary: action.payload };
+    case "APPEND_NEW_MESSAGES": {
+      const newMsgs = action.payload.filter(
+        (newM) => !state.messages.some((m) => m._id === newM._id)
+      );
+      if (newMsgs.length === 0) return state;
+      return {
+        ...state,
+        messages: [...state.messages, ...newMsgs],
+      };
+    }
+    case "REMOVE_ROOM": {
+      return {
+        ...state,
+        roomList: state.roomList.filter((r) => r._id !== action.payload),
+        activeRoom: state.activeRoom?._id === action.payload ? null : state.activeRoom,
+        messages: state.activeRoom?._id === action.payload ? [] : state.messages,
+        participants: state.activeRoom?._id === action.payload ? [] : state.participants,
+      };
+    }
     case "CLEAR_ROOM_STATE":
       return {
         ...state,
@@ -98,9 +168,24 @@ function roomReducer(state, action) {
 }
 
 export const RoomContextProvider = ({ children }) => {
-  const { token, axios, setUser } = useAppContext();
+  const { token, axios, setUser, user, navigate } = useAppContext();
   const [state, dispatch] = useReducer(roomReducer, initialState);
   const socketRef = useRef(null);
+  const userRef = useRef(user);
+  const activeRoomRef = useRef(state.activeRoom);
+  const messagesRef = useRef(state.messages);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    activeRoomRef.current = state.activeRoom;
+  }, [state.activeRoom]);
+
+  useEffect(() => {
+    messagesRef.current = state.messages;
+  }, [state.messages]);
 
   useEffect(() => {
     if (!token) {
@@ -120,8 +205,33 @@ export const RoomContextProvider = ({ children }) => {
     });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
+    socket.on("connect", async () => {
       console.log("Socket connected:", socket.id);
+      
+      const currentRoom = activeRoomRef.current;
+      const currentMessages = messagesRef.current;
+      
+      if (currentRoom) {
+        if (currentMessages && currentMessages.length > 0) {
+          const lastMsg = currentMessages[currentMessages.length - 1];
+          if (lastMsg && lastMsg.createdAt) {
+            try {
+              const { data } = await axios.get(
+                `/api/room/${currentRoom._id}/messages?since=${lastMsg.createdAt}`,
+                { headers: { Authorization: token } }
+              );
+              if (data.success && data.messages.length > 0) {
+                dispatch({
+                  type: "APPEND_NEW_MESSAGES",
+                  payload: data.messages,
+                });
+              }
+            } catch (err) {
+              console.error("Failed to sync room messages on reconnect:", err);
+            }
+          }
+        }
+      }
     });
 
     socket.on("connect_error", (err) => {
@@ -130,6 +240,13 @@ export const RoomContextProvider = ({ children }) => {
 
     socket.on("new-message", (msg) => {
       dispatch({ type: "ADD_MESSAGE", payload: msg });
+
+      // Play sound if not self and document is hidden or not focused
+      const currentUser = userRef.current;
+      const isSelf = currentUser && msg.senderId === currentUser._id;
+      if (!isSelf && msg.senderType !== "system" && (document.hidden || !document.hasFocus())) {
+        playNotificationSound();
+      }
     });
 
     socket.on("user-typing", (data) => {
@@ -146,6 +263,26 @@ export const RoomContextProvider = ({ children }) => {
 
     socket.on("ai-typing", (data) => {
       dispatch({ type: "SET_AI_TYPING_EVENT", payload: data });
+    });
+
+    socket.on("user-joined", (data) => {
+      toast.success(`${data.userName} joined the room`, { duration: 3000, icon: "👋" });
+    });
+
+    socket.on("user-left", (data) => {
+      toast(`${data.userName} left the room`, { duration: 3000, icon: "👋" });
+    });
+
+    socket.on("user-kicked", (data) => {
+      const currentUser = userRef.current;
+      if (currentUser && data.userId === currentUser._id) {
+        toast.error("You have been kicked from the room", { id: "kicked-toast" });
+        dispatch({ type: "REMOVE_ROOM", payload: data.roomId });
+        dispatch({ type: "CLEAR_ROOM_STATE" });
+        navigate("/rooms");
+      } else {
+        toast(`${data.userName} was kicked from the room`, { duration: 3000, icon: "👢" });
+      }
     });
 
     socket.on("error", (data) => {
@@ -223,9 +360,9 @@ export const RoomContextProvider = ({ children }) => {
     }
   };
 
-  const sendRoomMessage = (roomId, content) => {
+  const sendRoomMessage = (roomId, content, parentMsgId) => {
     if (socketRef.current) {
-      socketRef.current.emit("send-message", { roomId, content });
+      socketRef.current.emit("send-message", { roomId, content, parentMsgId });
     }
   };
 
@@ -295,6 +432,73 @@ export const RoomContextProvider = ({ children }) => {
     }
   };
 
+  const regenerateInvite = async (roomId) => {
+    if (!token) return null;
+    try {
+      const { data } = await axios.post(`/api/room/${roomId}/regenerate-invite`, {}, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success("Invite link regenerated!");
+        dispatch({ type: "UPDATE_ROOM", payload: data.room });
+        return data.room;
+      } else {
+        toast.error(data.message);
+        return null;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return null;
+    }
+  };
+
+  const leaveRoom = async (roomId) => {
+    if (!token) return false;
+    try {
+      // Leave socket room first
+      if (socketRef.current) {
+        socketRef.current.emit("leave-room", { roomId });
+      }
+
+      const { data } = await axios.post(`/api/room/${roomId}/leave`, {}, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success(data.message);
+        dispatch({ type: "REMOVE_ROOM", payload: roomId });
+        await fetchRooms();
+        return true;
+      } else {
+        toast.error(data.message);
+        return false;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return false;
+    }
+  };
+
+  const deleteRoom = async (roomId) => {
+    if (!token) return false;
+    try {
+      const { data } = await axios.delete(`/api/room/${roomId}`, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success(data.message);
+        dispatch({ type: "REMOVE_ROOM", payload: roomId });
+        await fetchRooms();
+        return true;
+      } else {
+        toast.error(data.message);
+        return false;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return false;
+    }
+  };
+
   const fetchSummaries = async (roomId) => {
     if (!token) return;
     try {
@@ -335,6 +539,48 @@ export const RoomContextProvider = ({ children }) => {
     }
   };
 
+  const kickParticipant = async (roomId, userId) => {
+    if (!token) return false;
+    try {
+      const { data } = await axios.post(`/api/room/${roomId}/kick`, { userId }, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success("Participant kicked successfully");
+        dispatch({ type: "UPDATE_ROOM", payload: data.room });
+        dispatch({ type: "SET_PARTICIPANTS", payload: data.room.participants });
+        return true;
+      } else {
+        toast.error(data.message);
+        return false;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return false;
+    }
+  };
+
+  const updateParticipantRole = async (roomId, userId, role) => {
+    if (!token) return false;
+    try {
+      const { data } = await axios.post(`/api/room/${roomId}/participant/role`, { userId, role }, {
+        headers: { Authorization: token },
+      });
+      if (data.success) {
+        toast.success(`Role updated to ${role} successfully`);
+        dispatch({ type: "UPDATE_ROOM", payload: data.room });
+        dispatch({ type: "SET_PARTICIPANTS", payload: data.room.participants });
+        return true;
+      } else {
+        toast.error(data.message);
+        return false;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return false;
+    }
+  };
+
   return (
     <RoomContext.Provider
       value={{
@@ -346,6 +592,11 @@ export const RoomContextProvider = ({ children }) => {
         joinRoomViaLink,
         createRoom,
         patchRoomSettings,
+        regenerateInvite,
+        leaveRoom,
+        deleteRoom,
+        kickParticipant,
+        updateParticipantRole,
         fetchSummaries,
         generateSummary,
         socket: socketRef.current,
@@ -357,3 +608,4 @@ export const RoomContextProvider = ({ children }) => {
 };
 
 export const useRoomContext = () => useContext(RoomContext);
+
