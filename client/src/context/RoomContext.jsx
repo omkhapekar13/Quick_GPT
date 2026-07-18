@@ -200,6 +200,7 @@ export const RoomContextProvider = ({ children }) => {
     const socketUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
     const socket = io(socketUrl, {
       auth: { token },
+      transports: ["websocket"],
       reconnection: true,
       reconnectionDelay: 1000,
     });
