@@ -25,6 +25,11 @@ await connectDB()
 app.use(cors())
 app.use(express.json())
 
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 //Routes
 app.get('/',(req,res)=>{
     res.send("Server is Live !")
