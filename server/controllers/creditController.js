@@ -34,24 +34,23 @@ const plans = [
 ]
 
 //API controller for getting all plans
-export const getPlans = async (req, res)=>{
+export const getPlans = async (req, res) => {
     try {
-        res.json({success: true,plans})
+        res.json({ success: true, plans })
     } catch (error) {
-        res.json({success: false, message: error.message})
+        res.json({ success: false, message: error.message })
     }
 }
 
 // API controller for purchasing a plan (creates transaction & Hosted Razorpay Payment Link)
-export const purchasePlan = async (req, res)=>{
+export const purchasePlan = async (req, res) => {
     try {
         const { planId } = req.body
         const userId = req.user._id
-        const plan = plans.find(plan=> plan._id === planId)
+        const plan = plans.find(plan => plan._id === planId)
 
-        if(!plan)
-        {
-            return res.json({success: false, message: "Invalid Plan"})
+        if (!plan) {
+            return res.json({ success: false, message: "Invalid Plan" })
         }
 
         const transaction = await Transaction.create({
@@ -80,7 +79,7 @@ export const purchasePlan = async (req, res)=>{
             },
             reminder_enable: false,
             // Redirects to this URL after payment success
-            callback_url: `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/credit/verify?transactionId=${transaction._id}`,
+            callback_url: `${(process.env.BACKEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/api/credit/verify?transactionId=${transaction._id}`,
             callback_method: "get"
         }
 
@@ -107,18 +106,18 @@ export const purchasePlan = async (req, res)=>{
 }
 
 // API controller for verifying payment (supports both real signature check & fake verification for Postman testing)
-export const verifyPayment = async (req, res)=>{
+export const verifyPayment = async (req, res) => {
     try {
         const data = req.method === "GET" ? req.query : req.body
-        const { 
-            transactionId, 
-            razorpay_order_id, 
-            razorpay_payment_id, 
-            razorpay_signature, 
-            razorpay_payment_link_id, 
-            razorpay_payment_link_reference_id, 
+        const {
+            transactionId,
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature,
+            razorpay_payment_link_id,
+            razorpay_payment_link_reference_id,
             razorpay_payment_link_status,
-            fake 
+            fake
         } = data
 
         const transaction = await Transaction.findById(transactionId)
@@ -183,7 +182,7 @@ export const verifyPayment = async (req, res)=>{
             if (user) {
                 user.credits += transaction.credits
                 await user.save()
-                
+
                 if (req.method === "GET") {
                     return res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/loading?success=true&credits=${user.credits}`)
                 }
