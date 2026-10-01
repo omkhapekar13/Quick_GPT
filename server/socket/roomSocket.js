@@ -2,7 +2,7 @@ import { socketAuthMiddleware } from "../middlewares/socketAuth.js";
 import Room from "../models/room.js";
 import RoomMessage from "../models/roomMessage.js";
 import User from "../models/user.js";
-import openai from "../configs/openai.js";
+import { indexMessage, generateRoomRAGResponse } from "../services/ragService.js";
 
 // Global queues for AI requests per room
 const aiQueues = {};
@@ -53,33 +53,30 @@ const processAIQueue = async (roomId, io) => {
     // Emit ai-typing to room
     io.to(roomId).emit("ai-typing", { roomId, isTyping: true });
 
-    const depth = room.aiContextDepth || 20;
-    const history = await RoomMessage.find({ roomId })
+    // Fetch immediate recent chronological messages (buffer of 5) for conversation flow.
+    // MongoDB remains owned by Node; RAG compute is delegated to Python.
+    const recentHistory = await RoomMessage.find({ roomId })
       .sort({ createdAt: -1 })
-      .limit(depth)
+      .limit(5)
       .lean();
 
-    history.reverse();
+    recentHistory.reverse();
 
-    const participantNames = room.participants.map((p) => p.userName).join(", ");
-    const systemPrompt = `You are an AI assistant in a group chat room called "${room.name}". 
-Multiple users are chatting. Respond helpfully and concisely. Address the user who mentioned you.
-The participants are: ${participantNames}.`;
-
-    const messagesPayload = [
-      { role: "system", content: systemPrompt },
-      ...history.map((m) => ({
-        role: m.senderType === "ai" ? "assistant" : "user",
-        content: `[${m.senderName}]: ${m.content}`,
-      })),
-    ];
-
-    const response = await openai.chat.completions.create({
+    // Phase 3: End-to-end room RAG in Python (retrieve + prompt + Gemini LLM)
+    const ragResult = await generateRoomRAGResponse({
+      roomId,
+      query: content,
+      recentHistory,
+      roomName: room.name,
+      participants: room.participants,
+      topK: 6,
+      minScore: 0.35,
       model: "gemini-2.5-flash",
-      messages: messagesPayload,
     });
 
-    const aiResponseText = response.choices[0].message.content;
+    const aiResponseText =
+      ragResult?.aiResponse ||
+      "I encountered an issue processing that room query. Please try again.";
 
     const aiMsg = await RoomMessage.create({
       roomId,
@@ -91,6 +88,16 @@ The participants are: ${participantNames}.`;
     });
 
     io.to(roomId).emit("new-message", aiMsg);
+
+    // Asynchronously index AI response for future retrieval (Python RAG)
+    indexMessage({
+      messageId: aiMsg._id,
+      roomId: aiMsg.roomId,
+      senderName: aiMsg.senderName,
+      senderType: "ai",
+      content: aiMsg.content,
+      createdAt: aiMsg.createdAt,
+    }).catch((err) => console.error("Async AI index error:", err.message));
 
     await User.updateOne({ _id: socket.user._id }, { $inc: { credits: -1 } });
     const updatedUser = await User.findById(socket.user._id);
@@ -224,6 +231,16 @@ export const initSocket = (io) => {
 
         // Broadcast to all sockets in the room (including sender)
         io.to(roomId).emit("new-message", newMessage);
+
+        // Asynchronously index message into Vector DB (non-blocking)
+        indexMessage({
+          messageId: newMessage._id,
+          roomId: newMessage.roomId,
+          senderName: newMessage.senderName,
+          senderType: "user",
+          content: newMessage.content,
+          createdAt: newMessage.createdAt,
+        }).catch((err) => console.error("Async msg index error:", err.message));
 
         // Check if message mentions @ai and room has AI enabled
         const mentionsAI = /(?:^|[^a-zA-Z0-9_])@ai(?![a-zA-Z0-9_])/i.test(content);

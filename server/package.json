@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "server": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "rag:python": "python -m uvicorn rag_service.main:app --host 127.0.0.1 --port 8000 --reload",
+    "test:python-rag": "node scripts/testPythonRAGConnection.js",
+    "test:phase3-rag": "node scripts/testPhase3RoomRAG.js"
   },
   "keywords": [],
   "author": "",
