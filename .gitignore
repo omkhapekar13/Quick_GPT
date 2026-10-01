@@ -1,15 +1,52 @@
-node_modules/
+# Environment & Secret Files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.vscode/
+.env.*
+*.local
+server/.env
+client/.env
+rag_service/.env
+
+# Dependencies & Build Artefacts
+node_modules/
+**/node_modules/
+dist/
+dist-ssr/
+build/
+.DS_Store
+Thumbs.db
+desktop.ini
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.DS_Store
-dist/
-build/
+
+# Editor & IDE Configs
+.vscode/
+
+#Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Project Planning & Scratch Notes
 COLLAB_CHAT_PLAN.md
 implementation_plans/
+implementation_plan_quickgpt_rag
+RAG_IMPLEMENTATION_PHASES_1_2_3.md
+dummyfiles.md
+RAG_workdone.md
+PYTHON_RAG_CONVERSION.md
+
+# Diagnostic & Scratch Test Scripts (Keeps backfillEmbeddings.js for DB migration)
+server/scripts/test*.js
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.env.python
+venv/
+.venv/

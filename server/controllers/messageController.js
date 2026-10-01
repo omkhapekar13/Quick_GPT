@@ -3,6 +3,7 @@ import Chat from "../models/chat.js"
 import User from "../models/user.js"
 import imagekit from "../configs/imagekit.js"
 import openai from "../configs/openai.js"
+import { indexUserMessage, retrieveUserContext, buildUserRAGPrompt } from "../services/ragService.js"
 
 //Text-based AI Chat message controller
 export const textMessageController = async (req, res) => {
@@ -17,24 +18,72 @@ export const textMessageController = async (req, res) => {
         const { chatId, prompt } = req.body
 
         const chat = await Chat.findOne({ userId, _id: chatId })
-        chat.messages.push({ role: "user", content: prompt, timestamp: Date.now(), isImage: false })
+        if (!chat) {
+            return res.json({ success: false, message: "Chat not found" })
+        }
+
+        // Get immediate recent history buffer from current chat (last 6 messages)
+        const recentHistory = chat.messages.slice(-6).map((m) => ({
+            role: m.role,
+            content: m.content,
+            isImage: m.isImage,
+        }));
+
+        // Retrieve cross-session long-term memories for this user
+        const retrievedDocs = await retrieveUserContext({
+            query: prompt,
+            userId,
+            excludeChatId: chatId,
+            topK: 4,
+            minScore: 0.35,
+        });
+
+        // Assemble personalized RAG prompt (async — delegates to Python RAG service)
+        const messagesPayload = await buildUserRAGPrompt({
+            query: prompt,
+            userName: req.user.name || "User",
+            retrievedDocs,
+            recentHistory,
+        });
+
+        const userMsgTimestamp = Date.now();
+        chat.messages.push({ role: "user", content: prompt, timestamp: userMsgTimestamp, isImage: false })
 
         const { choices } = await openai.chat.completions.create({
             model: "gemini-2.5-flash",
-            messages: [
-                {
-                    role: "user",
-                    content: prompt,
-                },
-            ],
+            messages: messagesPayload,
         });
 
-        const reply = { ...choices[0].message, timestamp: Date.now(), isImage: false }
-        res.json({ success: true, reply })
+        const replyContent = choices[0].message.content;
+        const reply = { role: "assistant", content: replyContent, timestamp: Date.now(), isImage: false }
+        
         chat.messages.push(reply)
         await chat.save()
 
+        // Deduct 1 credit
         await User.updateOne({ _id: userId }, { $inc: { credits: -1 } })
+
+        res.json({ success: true, reply })
+
+        // Asynchronously index user prompt and AI reply into user's personal long-term memory
+        indexUserMessage({
+            userId,
+            chatId: chat._id,
+            chatName: chat.name,
+            role: "user",
+            content: prompt,
+            timestamp: userMsgTimestamp,
+        }).catch((err) => console.error("Async user msg index error:", err.message));
+
+        indexUserMessage({
+            userId,
+            chatId: chat._id,
+            chatName: chat.name,
+            role: "assistant",
+            content: replyContent,
+            timestamp: reply.timestamp,
+        }).catch((err) => console.error("Async AI reply index error:", err.message));
+
     } catch (error) {
         console.error("Error in textMessageController:", error);
         res.json({ success: false, message: error.message })
