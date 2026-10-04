@@ -10,6 +10,7 @@ import {
   retrieveUserContextPython,
   buildUserPromptPython,
   cleanQueryPython,
+  userChatRagPython,
 } from "./pythonRagClient.js";
 
 /**
@@ -362,3 +363,89 @@ export const buildUserRAGPrompt = async ({
     { role: "user", content: query },
   ];
 };
+
+/**
+ * Phase 5: Generate 1-on-1 User Chat RAG Response via Python RAG Microservice.
+ * Delegates full memory recall, deduplication, Gemini generation, and auto-indexing to Python.
+ * Includes graceful local fallback if the Python service is offline.
+ * @param {Object} params
+ * @returns {Promise<{success: boolean, aiResponse: string, retrievedDocs: Array, isFallback: boolean, sourcesCount: number}>}
+ */
+export const generateUserRAGResponse = async ({
+  userId,
+  query,
+  userName = "User",
+  chatId = null,
+  chatName = "Chat",
+  recentHistory = [],
+  topK = 4,
+  minScore = 0.35,
+  autoIndex = true,
+  model = "gemini-2.5-flash",
+}) => {
+  // 1. Primary: End-to-end Python microservice
+  try {
+    const pyResult = await userChatRagPython({
+      userId,
+      query,
+      userName,
+      chatId,
+      chatName,
+      recentHistory,
+      topK,
+      minScore,
+      autoIndex,
+      model,
+    });
+
+    if (pyResult && pyResult.success && pyResult.aiResponse) {
+      return pyResult;
+    }
+  } catch (pyErr) {
+    console.warn("Python userChatRag failed, falling back to local flow:", pyErr.message);
+  }
+
+  // 2. Local fallback if Python is unavailable
+  try {
+    const retrievedDocs = await retrieveUserContext({
+      query,
+      userId,
+      excludeChatId: chatId,
+      topK,
+      minScore,
+    });
+
+    const messagesPayload = await buildUserRAGPrompt({
+      query,
+      userName,
+      retrievedDocs,
+      recentHistory,
+    });
+
+    const { choices } = await openai.chat.completions.create({
+      model,
+      messages: messagesPayload,
+    });
+
+    const aiResponse = choices[0].message.content;
+    return {
+      success: true,
+      aiResponse,
+      retrievedDocs,
+      sourcesCount: retrievedDocs.length,
+      isFallback: true,
+      error: null,
+    };
+  } catch (fallbackErr) {
+    console.error("Local user RAG fallback error:", fallbackErr.message);
+    return {
+      success: false,
+      aiResponse: "I encountered an issue processing your request.",
+      retrievedDocs: [],
+      sourcesCount: 0,
+      isFallback: true,
+      error: fallbackErr.message,
+    };
+  }
+};
+

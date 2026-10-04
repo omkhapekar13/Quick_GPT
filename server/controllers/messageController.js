@@ -3,7 +3,12 @@ import Chat from "../models/chat.js"
 import User from "../models/user.js"
 import imagekit from "../configs/imagekit.js"
 import openai from "../configs/openai.js"
-import { indexUserMessage, retrieveUserContext, buildUserRAGPrompt } from "../services/ragService.js"
+import {
+  indexUserMessage,
+  retrieveUserContext,
+  buildUserRAGPrompt,
+  generateUserRAGResponse,
+} from "../services/ragService.js"
 
 //Text-based AI Chat message controller
 export const textMessageController = async (req, res) => {
@@ -29,32 +34,23 @@ export const textMessageController = async (req, res) => {
             isImage: m.isImage,
         }));
 
-        // Retrieve cross-session long-term memories for this user
-        const retrievedDocs = await retrieveUserContext({
-            query: prompt,
-            userId,
-            excludeChatId: chatId,
-            topK: 4,
-            minScore: 0.35,
-        });
-
-        // Assemble personalized RAG prompt (async — delegates to Python RAG service)
-        const messagesPayload = await buildUserRAGPrompt({
-            query: prompt,
-            userName: req.user.name || "User",
-            retrievedDocs,
-            recentHistory,
-        });
-
         const userMsgTimestamp = Date.now();
         chat.messages.push({ role: "user", content: prompt, timestamp: userMsgTimestamp, isImage: false })
 
-        const { choices } = await openai.chat.completions.create({
-            model: "gemini-2.5-flash",
-            messages: messagesPayload,
+        // Phase 5: Delegate 1-on-1 RAG, Memory Recall & Response Synthesis to Python RAG Microservice
+        const ragResult = await generateUserRAGResponse({
+            userId,
+            query: prompt,
+            userName: req.user.name || "User",
+            chatId: chat._id,
+            chatName: chat.name,
+            recentHistory,
+            topK: 4,
+            minScore: 0.35,
+            autoIndex: true, // Auto-indexes both user turn and AI response in Python
         });
 
-        const replyContent = choices[0].message.content;
+        const replyContent = ragResult?.aiResponse || "I am here to help.";
         const reply = { role: "assistant", content: replyContent, timestamp: Date.now(), isImage: false }
         
         chat.messages.push(reply)
@@ -64,25 +60,6 @@ export const textMessageController = async (req, res) => {
         await User.updateOne({ _id: userId }, { $inc: { credits: -1 } })
 
         res.json({ success: true, reply })
-
-        // Asynchronously index user prompt and AI reply into user's personal long-term memory
-        indexUserMessage({
-            userId,
-            chatId: chat._id,
-            chatName: chat.name,
-            role: "user",
-            content: prompt,
-            timestamp: userMsgTimestamp,
-        }).catch((err) => console.error("Async user msg index error:", err.message));
-
-        indexUserMessage({
-            userId,
-            chatId: chat._id,
-            chatName: chat.name,
-            role: "assistant",
-            content: replyContent,
-            timestamp: reply.timestamp,
-        }).catch((err) => console.error("Async AI reply index error:", err.message));
 
     } catch (error) {
         console.error("Error in textMessageController:", error);

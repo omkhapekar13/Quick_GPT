@@ -9,7 +9,10 @@
     "start": "node server.js",
     "rag:python": "python -m uvicorn rag_service.main:app --host 127.0.0.1 --port 8000 --reload",
     "test:python-rag": "node scripts/testPythonRAGConnection.js",
-    "test:phase3-rag": "node scripts/testPhase3RoomRAG.js"
+    "test:phase3-rag": "node scripts/testPhase3RoomRAG.js",
+    "test:phase4-summary": "node scripts/testPhase4Summary.js",
+    "test:phase5-user-rag": "node scripts/testPhase5UserRAG.js",
+    "test:all-rag": "node scripts/testAllRAGPhases.js"
   },
   "keywords": [],
   "author": "",
