@@ -32,16 +32,16 @@ from .services.rag_service import (
     index_user_message,
     retrieve_user_context,
     build_user_rag_prompt,
+    generate_user_rag_response,
 )
+from .services.summary_service import generate_room_summary
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("rag_service")
 
-# Initialize FastAPI
 app = FastAPI(
     title="MyGPT Python RAG Service",
     description="Python microservice handling Vector DB (Pinecone) & RAG semantic pipeline for MyGPT.",
@@ -56,10 +56,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ==========================================
-# Request & Response Schemas
-# ==========================================
 
 class SingleEmbeddingRequest(BaseModel):
     text: str = Field(..., description="Text content to embed")
@@ -146,9 +142,7 @@ class RoomRAGQueryResponse(BaseModel):
 
     class Config:
         populate_by_name = True
-        # Allow both snake_case and camelCase serialization for Node.js bridge
         by_alias = False
-
 
 
 class IndexUserMessageRequest(BaseModel):
@@ -185,9 +179,61 @@ class BuildUserPromptRequest(BaseModel):
         populate_by_name = True
 
 
-# ==========================================
-# Phase 1 Endpoints
-# ==========================================
+class RoomSummaryRequest(BaseModel):
+    room_id: str = Field(..., alias="roomId")
+    room_name: Optional[str] = Field("Chat Room", alias="roomName")
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+    model: Optional[str] = Field("gemini-2.5-flash")
+
+    class Config:
+        populate_by_name = True
+
+
+class RoomSummaryResponse(BaseModel):
+    success: bool
+    summary: str = ""
+    topics: List[str] = Field(default_factory=list)
+    decisions: List[str] = Field(default_factory=list)
+    action_items: List[str] = Field(default_factory=list, alias="actionItems")
+    participants: List[str] = Field(default_factory=list)
+    message_count: int = Field(0, alias="messageCount")
+    is_hierarchical: bool = Field(False, alias="isHierarchical")
+    error: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        by_alias = False
+
+
+class UserRAGQueryRequest(BaseModel):
+    user_id: str = Field(..., alias="userId")
+    query: str
+    user_name: Optional[str] = Field("User", alias="userName")
+    chat_id: Optional[str] = Field(None, alias="chatId")
+    chat_name: Optional[str] = Field("Chat", alias="chatName")
+    recent_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list, alias="recentHistory")
+    top_k: Optional[int] = Field(4, alias="topK")
+    min_score: Optional[float] = Field(0.35, alias="minScore")
+    auto_index: Optional[bool] = Field(True, alias="autoIndex")
+    model: Optional[str] = Field("gemini-2.5-flash")
+
+    class Config:
+        populate_by_name = True
+
+
+class UserRAGQueryResponse(BaseModel):
+    success: bool
+    ai_response: str = Field(..., alias="aiResponse")
+    retrieved_docs: List[Dict[str, Any]] = Field(default_factory=list, alias="retrievedDocs")
+    sources_count: int = Field(0, alias="sourcesCount")
+    indexed_count: int = Field(0, alias="indexedCount")
+    is_fallback: bool = Field(False, alias="isFallback")
+    error: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        by_alias = False
+
 
 @app.get("/")
 @app.get("/health")
@@ -196,7 +242,7 @@ def health_check():
     return {
         "status": "online",
         "service": "MyGPT Python RAG Service",
-        "phase": 3,
+        "phase": 6,
         "features": {
             "gemini_api_configured": bool(GEMINI_API_KEY),
             "pinecone_configured": is_vector_db_configured(),
@@ -205,7 +251,10 @@ def health_check():
             "embedding_dimension": EMBEDDING_DIMENSION,
             "room_rag": True,
             "room_rag_chat": True,
+            "room_summary": True,
             "user_rag": True,
+            "user_rag_chat": True,
+            "hierarchical_summaries": True,
         },
     }
 
@@ -281,10 +330,6 @@ def get_vector_db_status():
         }
 
 
-# ==========================================
-# Phase 2 Endpoints: Core RAG Engine
-# ==========================================
-
 @app.post("/api/rag/clean-query")
 def api_clean_query(payload: CleanQueryRequest):
     """Strip @ai trigger and clean query whitespace."""
@@ -331,17 +376,9 @@ def api_build_room_prompt(payload: BuildRoomPromptRequest):
     return {"messages": messages}
 
 
-# ==========================================
-# Phase 3 Endpoint: Live Room Chat RAG Pipeline
-# ==========================================
-
 @app.post("/api/rag/room-chat-rag")
 def api_room_chat_rag(payload: RoomRAGQueryRequest):
-    """
-    Phase 3: Real-Time Room Chat RAG Pipeline.
-    Retrieves semantic context from Vector DB, merges with recent chat buffer,
-    generates response using Gemini LLM, and returns AI answer and sources.
-    """
+    """Real-time room chat RAG pipeline with vector retrieval and LLM response."""
     result = generate_room_rag_response(
         room_id=payload.room_id,
         query=payload.query,
@@ -352,7 +389,6 @@ def api_room_chat_rag(payload: RoomRAGQueryRequest):
         min_score=payload.min_score if payload.min_score is not None else 0.35,
         model_name=payload.model or "gemini-2.5-flash",
     )
-    # Emit both camelCase and snake_case for Node.js bridge compatibility
     return {
         "success": result.get("success", False),
         "aiResponse": result.get("ai_response", ""),
@@ -365,7 +401,6 @@ def api_room_chat_rag(payload: RoomRAGQueryRequest):
         "sources_count": result.get("sources_count", 0),
         "error": result.get("error"),
     }
-
 
 
 @app.post("/api/rag/index-user-message")
@@ -406,6 +441,61 @@ def api_build_user_prompt(payload: BuildUserPromptRequest):
         recent_history=payload.recent_history,
     )
     return {"messages": messages}
+
+
+@app.post("/api/rag/room-summary")
+def api_room_summary(payload: RoomSummaryRequest):
+    """Generate structured room summary with topic and action item extraction."""
+    result = generate_room_summary(
+        messages=payload.messages,
+        room_name=payload.room_name or "Chat Room",
+        model_name=payload.model or "gemini-2.5-flash",
+    )
+    return {
+        "success": result.get("success", False),
+        "summary": result.get("summary", ""),
+        "topics": result.get("topics", []),
+        "decisions": result.get("decisions", []),
+        "actionItems": result.get("action_items", []),
+        "action_items": result.get("action_items", []),
+        "participants": result.get("participants", []),
+        "activeSpeakers": result.get("active_speakers", []),
+        "messageCount": result.get("message_count", len(payload.messages)),
+        "isHierarchical": result.get("is_hierarchical", False),
+        "chunkCount": result.get("chunk_count", 1),
+        "error": result.get("error"),
+    }
+
+
+@app.post("/api/rag/user-chat-rag")
+def api_user_chat_rag(payload: UserRAGQueryRequest):
+    """1-on-1 Chat RAG with cross-session recall and auto-indexing."""
+    result = generate_user_rag_response(
+        user_id=payload.user_id,
+        query=payload.query,
+        user_name=payload.user_name or "User",
+        chat_id=payload.chat_id,
+        chat_name=payload.chat_name or "Chat",
+        recent_history=payload.recent_history or [],
+        top_k=payload.top_k or 4,
+        min_score=payload.min_score if payload.min_score is not None else 0.35,
+        auto_index=True if payload.auto_index is None else payload.auto_index,
+        model_name=payload.model or "gemini-2.5-flash",
+    )
+    return {
+        "success": result.get("success", False),
+        "aiResponse": result.get("ai_response", ""),
+        "ai_response": result.get("ai_response", ""),
+        "retrievedDocs": result.get("retrieved_docs", []),
+        "retrieved_docs": result.get("retrieved_docs", []),
+        "sourcesCount": result.get("sources_count", 0),
+        "sources_count": result.get("sources_count", 0),
+        "indexedCount": result.get("indexed_count", 0),
+        "indexed_count": result.get("indexed_count", 0),
+        "isFallback": result.get("is_fallback", False),
+        "is_fallback": result.get("is_fallback", False),
+        "error": result.get("error"),
+    }
 
 
 if __name__ == "__main__":

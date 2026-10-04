@@ -17,7 +17,6 @@ from .embedding_service import generate_embedding
 
 logger = logging.getLogger("rag_service.core")
 
-# OpenAI-compatible Gemini client (same pattern as Node server/configs/openai.js)
 _llm_client: Optional[OpenAI] = None
 if GEMINI_API_KEY:
     _llm_client = OpenAI(
@@ -32,7 +31,6 @@ def _normalize_gemini_model(model_name: Optional[str]) -> str:
     if name.startswith("models/"):
         name = name[len("models/"):]
     return name or "gemini-2.5-flash"
-
 
 
 def clean_user_query(query: str) -> str:
@@ -267,8 +265,8 @@ def build_rag_prompt(
         })
 
     return messages_payload
- 
- 
+
+
 def generate_room_rag_response(
     room_id: str,
     query: str,
@@ -357,10 +355,6 @@ def generate_room_rag_response(
             "sources_count": len(retrieved_docs),
         }
 
-
-# ==========================================
-# 1-on-1 User Private Chat RAG Functions
-# ==========================================
 
 def index_user_message(
     user_id: str,
@@ -554,3 +548,133 @@ def build_user_rag_prompt(
         })
 
     return messages_payload
+
+
+def generate_user_rag_response(
+    user_id: str,
+    query: str,
+    user_name: str = "User",
+    chat_id: Optional[str] = None,
+    chat_name: str = "Chat",
+    recent_history: Optional[List[Dict[str, Any]]] = None,
+    top_k: int = 4,
+    min_score: float = 0.35,
+    auto_index: bool = True,
+    model_name: str = "gemini-2.5-flash",
+) -> Dict[str, Any]:
+    """
+    Phase 5: End-to-End 1-on-1 User Chat RAG Pipeline in Python.
+    - Recalls cross-session long-term memory for this user from Pinecone user namespace.
+    - Deduplicates against the immediate conversation turn history.
+    - Generates personalized AI response with Gemini.
+    - If auto_index is True, indexes user turn and assistant reply for continuous personal memory.
+    """
+    if not query or not query.strip():
+        return {
+            "success": False,
+            "error": "Query cannot be empty.",
+            "ai_response": "How can I help you today?",
+            "retrieved_docs": [],
+            "is_fallback": True,
+            "sources_count": 0,
+        }
+
+    clean_query_str = query.strip()
+    is_fallback = False
+
+    # 1. Retrieve cross-session long-term memory for this user
+    try:
+        retrieved_docs = retrieve_user_context(
+            query=clean_query_str,
+            user_id=user_id,
+            exclude_chat_id=chat_id,
+            top_k=top_k,
+            min_score=min_score,
+        )
+    except Exception as ret_err:
+        logger.warning(f"User RAG retrieval error for user {user_id}: {ret_err}")
+        is_fallback = True
+        retrieved_docs = []
+
+    # 2. Build Personalized RAG Prompt
+    messages_payload = build_user_rag_prompt(
+        query=clean_query_str,
+        user_name=user_name or "User",
+        retrieved_docs=retrieved_docs,
+        recent_history=recent_history or [],
+    )
+
+    # 3. Generate AI response with Gemini via OpenAI-compatible endpoint
+    if not _llm_client:
+        logger.error("Gemini LLM client is not configured (missing GEMINI_API_KEY).")
+        return {
+            "success": False,
+            "error": "GEMINI_API_KEY is not configured",
+            "ai_response": "I'm having trouble connecting to my AI service right now. Please try again later.",
+            "retrieved_docs": retrieved_docs,
+            "is_fallback": True,
+            "sources_count": len(retrieved_docs),
+        }
+
+    try:
+        response = _llm_client.chat.completions.create(
+            model=_normalize_gemini_model(model_name),
+            messages=messages_payload,
+        )
+        ai_response_text = (
+            response.choices[0].message.content.strip()
+            if response and response.choices and response.choices[0].message.content
+            else "I'm here to help."
+        )
+
+        now_timestamp = datetime.now(timezone.utc).isoformat()
+        indexed_count = 0
+
+        # 4. Auto-index user prompt and AI reply into user's personal memory in Python
+        if auto_index and user_id:
+            try:
+                # Index user prompt
+                idx_user = index_user_message(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    chat_name=chat_name,
+                    role="user",
+                    content=clean_query_str,
+                    timestamp=now_timestamp,
+                )
+                if idx_user:
+                    indexed_count += 1
+
+                # Index assistant response
+                idx_ai = index_user_message(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    chat_name=chat_name,
+                    role="assistant",
+                    content=ai_response_text,
+                    timestamp=now_timestamp,
+                )
+                if idx_ai:
+                    indexed_count += 1
+            except Exception as idx_err:
+                logger.warning(f"Auto-indexing user chat memory failed (non-fatal): {idx_err}")
+
+        return {
+            "success": True,
+            "ai_response": ai_response_text,
+            "retrieved_docs": retrieved_docs,
+            "is_fallback": is_fallback or len(retrieved_docs) == 0,
+            "sources_count": len(retrieved_docs),
+            "indexed_count": indexed_count,
+        }
+
+    except Exception as gen_err:
+        logger.error(f"Gemini LLM generation failed in Python user RAG: {gen_err}")
+        return {
+            "success": False,
+            "error": str(gen_err),
+            "ai_response": "I encountered an issue processing your request. Please try again.",
+            "retrieved_docs": retrieved_docs,
+            "is_fallback": True,
+            "sources_count": len(retrieved_docs),
+        }

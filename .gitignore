@@ -2,27 +2,41 @@
 .env
 .env.*
 *.local
+.env.python
 server/.env
 client/.env
 rag_service/.env
 
-# Dependencies & Build Artefacts
+# Dependencies & Build Artifacts
 node_modules/
 **/node_modules/
 dist/
 dist-ssr/
 build/
-.DS_Store
-Thumbs.db
-desktop.ini
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+.vite/
+**/.vite/
+.eslintcache
 
-# Editor & IDE Configs
-.vscode/
+# Python Virtual Environments & Bytecode
+**/__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+venv*/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-#Logs
+# Diagnostic & Test Files
+rag_service/tests/
+server/scripts/test*.js
+
+# Logs
 logs/
 *.log
 npm-debug.log*
@@ -39,14 +53,13 @@ dummyfiles.md
 RAG_workdone.md
 PYTHON_RAG_CONVERSION.md
 
-# Diagnostic & Scratch Test Scripts (Keeps backfillEmbeddings.js for DB migration)
-server/scripts/test*.js
-
-# Python Cache & Virtual Environments
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.env.python
-venv/
-.venv/
+# Editor & OS Artifacts
+**/.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini

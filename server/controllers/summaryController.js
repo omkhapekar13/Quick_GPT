@@ -2,6 +2,7 @@ import Summary from "../models/summary.js";
 import RoomMessage from "../models/roomMessage.js";
 import User from "../models/user.js";
 import openai from "../configs/openai.js";
+import { generateRoomSummaryPython } from "../services/pythonRagClient.js";
 
 // Generate a summary for a room
 export const generateRoomSummary = async (req, res) => {
@@ -46,16 +47,40 @@ export const generateRoomSummary = async (req, res) => {
     // Reverse to chronological order
     messages.reverse();
 
-    // Format transcript
-    const transcript = messages
-      .map((m) => {
-        const speaker = m.senderType === "ai" ? "AI Assistant" : m.senderName;
-        const time = new Date(m.createdAt).toLocaleTimeString();
-        return `[${time}] ${speaker}: ${m.content}`;
-      })
-      .join("\n");
+    // Phase 4: Generate intelligent room summary via Python RAG microservice
+    let summaryText = "";
+    try {
+      const pySummaryResult = await generateRoomSummaryPython({
+        roomId,
+        roomName: req.room.name,
+        messages: messages.map((m) => ({
+          sender_name: m.senderName,
+          sender_type: m.senderType,
+          content: m.content,
+          created_at: m.createdAt,
+          is_image: m.isImage,
+        })),
+      });
 
-    const prompt = `You are a meeting summarizer. Below is a transcript from a group chat room called "${req.room.name}".
+      if (pySummaryResult && pySummaryResult.success && pySummaryResult.summary) {
+        summaryText = pySummaryResult.summary;
+      }
+    } catch (pyErr) {
+      console.warn("Python RAG summary error, falling back to local LLM:", pyErr.message);
+    }
+
+    // Local Node.js Fallback if Python service unavailable
+    if (!summaryText) {
+      // Format transcript
+      const transcript = messages
+        .map((m) => {
+          const speaker = m.senderType === "ai" ? "AI Assistant" : m.senderName;
+          const time = new Date(m.createdAt).toLocaleTimeString();
+          return `[${time}] ${speaker}: ${m.content}`;
+        })
+        .join("\n");
+
+      const prompt = `You are a meeting summarizer. Below is a transcript from a group chat room called "${req.room.name}".
 
 TRANSCRIPT:
 ${transcript}
@@ -78,14 +103,15 @@ List of people who participated and a one-line note on their contributions.
 
 Keep it concise and factual. Do not invent information not present in the transcript.`;
 
-    // Query Gemini
-    const response = await openai.chat.completions.create({
-      model: "gemini-2.5-flash",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2048,
-    });
+      // Query Gemini
+      const response = await openai.chat.completions.create({
+        model: "gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2048,
+      });
 
-    const summaryText = response.choices[0].message.content;
+      summaryText = response.choices[0].message.content;
+    }
 
     // Calculate version
     const count = await Summary.countDocuments({ roomId });

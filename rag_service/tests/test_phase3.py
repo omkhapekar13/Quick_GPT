@@ -13,6 +13,17 @@ import sys
 import time
 import uuid
 import logging
+from pathlib import Path
+
+# Ensure UTF-8 output on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# Add project root to sys.path
+root_dir = Path(__file__).resolve().parent.parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
 from rag_service.configs.settings import GEMINI_API_KEY, PINECONE_API_KEY
 from rag_service.configs.vector_db import get_vector_index, get_room_namespace
 from rag_service.services.rag_service import (
@@ -33,7 +44,7 @@ def run_phase3_tests():
     print("=" * 65)
 
     if not GEMINI_API_KEY or not PINECONE_API_KEY:
-        print("❌ Error: Missing GEMINI_API_KEY or PINECONE_API_KEY in environment.")
+        print("Error: Missing GEMINI_API_KEY or PINECONE_API_KEY in environment.")
         sys.exit(1)
 
     test_room_id = f"test_room_phase3_{uuid.uuid4().hex[:8]}"
@@ -71,7 +82,7 @@ def run_phase3_tests():
         created_at=time.time() - 86400 * 2,  # 2 days ago
     )
     assert success, "Failed to index critical room message into Pinecone."
-    print("✅ Indexed critical architectural decision (Sarah) into room namespace!")
+    print("Indexed critical architectural decision (Sarah) into room namespace!")
 
     # Ingest some banter messages
     banter_messages = [
@@ -89,7 +100,7 @@ def run_phase3_tests():
             content=text,
             created_at=time.time() - 3600,
         )
-    print(f"✅ Indexed {len(banter_messages)} distraction chat messages into room namespace.")
+    print(f"Indexed {len(banter_messages)} distraction chat messages into room namespace.")
 
     print("\n   Waiting 2.5s for Pinecone vector propagation...")
     time.sleep(2.5)
@@ -112,7 +123,7 @@ def run_phase3_tests():
 
     found_decision = any("Saturday at 2:00 AM" in d["content"] for d in retrieved_docs)
     assert found_decision, "Failed to retrieve the historical decision!"
-    print("✅ Successfully retrieved deep historical decision from Pinecone via Python!")
+    print("Successfully retrieved deep historical decision from Pinecone via Python!")
 
     # -------------------------------------------------------------
     # 4. Test Full End-to-End Room RAG Pipeline in Python

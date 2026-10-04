@@ -308,6 +308,119 @@ export const roomChatRagPython = async ({
   }
 };
 
+/**
+ * Phase 4: Intelligent Room Summary in Python
+ * @param {Object} params
+ * @param {string} params.roomId
+ * @param {string} [params.roomName]
+ * @param {Array<Object>} params.messages
+ * @param {string} [params.model]
+ */
+export const generateRoomSummaryPython = async ({
+  roomId,
+  roomName = "Chat Room",
+  messages = [],
+  model = "gemini-2.5-flash",
+}) => {
+  const llmTimeout =
+    parseInt(process.env.PYTHON_RAG_LLM_TIMEOUT_MS, 10) || 60000;
+
+  try {
+    const res = await ragHttpClient.post(
+      "/api/rag/room-summary",
+      {
+        roomId: roomId ? roomId.toString() : "",
+        roomName,
+        messages,
+        model,
+      },
+      { timeout: llmTimeout }
+    );
+
+    if (!res.data) return null;
+
+    return {
+      success: Boolean(res.data.success),
+      summary: res.data.summary || "",
+      topics: res.data.topics || [],
+      decisions: res.data.decisions || [],
+      actionItems: res.data.actionItems || res.data.action_items || [],
+      participants: res.data.participants || [],
+      activeSpeakers: res.data.activeSpeakers || res.data.active_speakers || [],
+      messageCount: res.data.messageCount || res.data.message_count || messages.length,
+      isHierarchical: Boolean(res.data.isHierarchical ?? res.data.is_hierarchical),
+      error: res.data.error || null,
+    };
+  } catch (err) {
+    console.error("Python RAG generateRoomSummary error:", err.message);
+    return null;
+  }
+};
+
+/**
+ * Phase 5: 1-on-1 Chat RAG & Cross-Session Personal Memory in Python
+ * @param {Object} params
+ * @param {string} params.userId
+ * @param {string} params.query
+ * @param {string} [params.userName]
+ * @param {string} [params.chatId]
+ * @param {string} [params.chatName]
+ * @param {Array<Object>} [params.recentHistory]
+ * @param {number} [params.topK]
+ * @param {number} [params.minScore]
+ * @param {boolean} [params.autoIndex]
+ * @param {string} [params.model]
+ */
+export const userChatRagPython = async ({
+  userId,
+  query,
+  userName = "User",
+  chatId = null,
+  chatName = "Chat",
+  recentHistory = [],
+  topK = 4,
+  minScore = 0.35,
+  autoIndex = true,
+  model = "gemini-2.5-flash",
+}) => {
+  const llmTimeout =
+    parseInt(process.env.PYTHON_RAG_LLM_TIMEOUT_MS, 10) || 45000;
+
+  try {
+    const res = await ragHttpClient.post(
+      "/api/rag/user-chat-rag",
+      {
+        userId: userId ? userId.toString() : "",
+        query,
+        userName,
+        chatId: chatId ? chatId.toString() : null,
+        chatName,
+        recentHistory,
+        topK,
+        minScore,
+        autoIndex,
+        model,
+      },
+      { timeout: llmTimeout }
+    );
+
+    if (!res.data) return null;
+
+    return {
+      success: Boolean(res.data.success),
+      aiResponse: res.data.aiResponse || res.data.ai_response || "",
+      retrievedDocs: res.data.retrievedDocs || res.data.retrieved_docs || [],
+      sourcesCount: res.data.sourcesCount ?? res.data.sources_count ?? 0,
+      indexedCount: res.data.indexedCount ?? res.data.indexed_count ?? 0,
+      isFallback: Boolean(res.data.isFallback ?? res.data.is_fallback),
+      error: res.data.error || null,
+    };
+  } catch (err) {
+    console.error("Python RAG userChatRag error:", err.message);
+    return null;
+  }
+};
+
 export default {
   PYTHON_RAG_URL,
   checkPythonHealth,
@@ -322,5 +435,8 @@ export default {
   retrieveUserContextPython,
   buildUserPromptPython,
   roomChatRagPython,
+  generateRoomSummaryPython,
+  userChatRagPython,
 };
+
 
